@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhotoFrame</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Desktop Slideshow</p>
+          <h1>PhotoFrame</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="shuffle-now" type="button" class="secondary-button">
+            Shuffle
+          </button>
+          <button id="open-settings" type="button">Settings</button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <div>
+          <span class="status-label">Current image</span>
+          <strong id="current-image-name">Loading settings...</strong>
+        </div>
+        <div>
+          <span class="status-label">Status</span>
+          <strong id="viewer-status">Starting up...</strong>
+        </div>
+        <div>
+          <span class="status-label">Count</span>
+          <strong id="image-counter">0 images</strong>
+        </div>
+      </section>
+
+      <section class="photo-stage" id="photo-stage" data-empty="true">
+        <img id="photo" alt="Current slideshow image" hidden />
+        <div class="empty-state">
+          <p id="empty-message">Loading settings...</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="settings-dialog">
+      <form id="settings-form" method="dialog" class="settings-form">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Configuration</p>
+            <h2>Settings</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>Image directory</span>
+          <input
+            id="directory-path"
+            name="directoryPath"
+            type="text"
+            placeholder="/Users/you/Pictures"
+            autocomplete="off"
+          />
+        </label>
+
+        <label class="field">
+          <span>Interval in seconds</span>
+          <input
+            id="interval-seconds"
+            name="intervalSeconds"
+            type="number"
+            min="1"
+            step="1"
+            inputmode="numeric"
+          />
+        </label>
+
+        <p id="settings-status" class="settings-status"></p>
+
+        <menu class="dialog-actions">
+          <button
+            type="button"
+            value="cancel"
+            class="secondary-button"
+            onclick="document.getElementById('settings-dialog').close()"
+          >
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+  </body>
+</html>
