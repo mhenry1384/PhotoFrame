@@ -32,8 +32,7 @@ const elements = {
   emptyMessage: document.querySelector<HTMLElement>("#empty-message"),
   imageCounter: document.querySelector<HTMLElement>("#image-counter"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
-  maximizeButton: document.querySelector<HTMLButtonElement>("#maximize-image"),
-  nextButton: document.querySelector<HTMLButtonElement>("#next-image"),
+  nextOverlayButton: document.querySelector<HTMLButtonElement>("#next-image-overlay"),
   photo: document.querySelector<HTMLImageElement>("#photo"),
   photoStage: document.querySelector<HTMLElement>("#photo-stage"),
   restoreLayoutButton: document.querySelector<HTMLButtonElement>("#restore-layout"),
@@ -42,7 +41,6 @@ const elements = {
   settingsForm: document.querySelector<HTMLFormElement>("#settings-form"),
   settingsStatus: document.querySelector<HTMLElement>("#settings-status"),
   directoryInput: document.querySelector<HTMLInputElement>("#directory-path"),
-  shuffleButton: document.querySelector<HTMLButtonElement>("#shuffle-now"),
   viewerStatus: document.querySelector<HTMLElement>("#viewer-status"),
 };
 
@@ -59,8 +57,7 @@ const currentImageName = requireElement(elements.currentImageName, "#current-ima
 const emptyMessage = requireElement(elements.emptyMessage, "#empty-message");
 const imageCounter = requireElement(elements.imageCounter, "#image-counter");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
-const maximizeButton = requireElement(elements.maximizeButton, "#maximize-image");
-const nextButton = requireElement(elements.nextButton, "#next-image");
+const nextOverlayButton = requireElement(elements.nextOverlayButton, "#next-image-overlay");
 const photo = requireElement(elements.photo, "#photo");
 const photoStage = requireElement(elements.photoStage, "#photo-stage");
 const restoreLayoutButton = requireElement(elements.restoreLayoutButton, "#restore-layout");
@@ -69,7 +66,6 @@ const settingsDialog = requireElement(elements.settingsDialog, "#settings-dialog
 const settingsForm = requireElement(elements.settingsForm, "#settings-form");
 const settingsStatus = requireElement(elements.settingsStatus, "#settings-status");
 const directoryInput = requireElement(elements.directoryInput, "#directory-path");
-const shuffleButton = requireElement(elements.shuffleButton, "#shuffle-now");
 const viewerStatus = requireElement(elements.viewerStatus, "#viewer-status");
 
 function setViewerMessage(message: string) {
@@ -95,7 +91,12 @@ function setViewerStatus(message: string, isError = false) {
 
 function syncImageMaximizedState() {
   appShell.dataset.imageMaximized = state.isImageMaximized ? "true" : "false";
-  restoreLayoutButton.hidden = !state.isImageMaximized;
+  const buttonLabel = state.isImageMaximized
+    ? "Exit max image mode"
+    : "Enter max image mode";
+
+  restoreLayoutButton.setAttribute("aria-label", buttonLabel);
+  restoreLayoutButton.title = buttonLabel;
 }
 
 function setImageMaximized(isMaximized: boolean) {
@@ -250,20 +251,12 @@ settingsDialog.addEventListener("close", () => {
   setSettingsStatus("");
 });
 
-shuffleButton.addEventListener("click", () => {
+nextOverlayButton.addEventListener("click", () => {
   void advanceToNextImage();
-});
-
-nextButton.addEventListener("click", () => {
-  void advanceToNextImage();
-});
-
-maximizeButton.addEventListener("click", () => {
-  setImageMaximized(true);
 });
 
 restoreLayoutButton.addEventListener("click", () => {
-  setImageMaximized(false);
+  setImageMaximized(!state.isImageMaximized);
 });
 
 photo.addEventListener("error", () => {

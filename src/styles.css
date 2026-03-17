@@ -222,11 +222,17 @@ h2 {
   padding: 1rem;
 }
 
-.icon-button {
+.photo-controls {
   position: absolute;
   top: 1rem;
   right: 1rem;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.icon-button {
   width: 3rem;
   height: 3rem;
   display: grid;
@@ -242,6 +248,18 @@ h2 {
 .icon-button svg {
   width: 1.2rem;
   height: 1.2rem;
+}
+
+.icon-collapse {
+  display: none;
+}
+
+.app-shell[data-image-maximized="true"] .icon-expand {
+  display: none;
+}
+
+.app-shell[data-image-maximized="true"] .icon-collapse {
+  display: block;
 }
 
 .empty-state {
