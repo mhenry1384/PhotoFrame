@@ -29,6 +29,7 @@ const elements = {
   emptyMessage: document.querySelector<HTMLElement>("#empty-message"),
   imageCounter: document.querySelector<HTMLElement>("#image-counter"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
+  nextButton: document.querySelector<HTMLButtonElement>("#next-image"),
   photo: document.querySelector<HTMLImageElement>("#photo"),
   photoStage: document.querySelector<HTMLElement>("#photo-stage"),
   settingsButton: document.querySelector<HTMLButtonElement>("#open-settings"),
@@ -52,6 +53,7 @@ const currentImageName = requireElement(elements.currentImageName, "#current-ima
 const emptyMessage = requireElement(elements.emptyMessage, "#empty-message");
 const imageCounter = requireElement(elements.imageCounter, "#image-counter");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
+const nextButton = requireElement(elements.nextButton, "#next-image");
 const photo = requireElement(elements.photo, "#photo");
 const photoStage = requireElement(elements.photoStage, "#photo-stage");
 const settingsButton = requireElement(elements.settingsButton, "#open-settings");
@@ -166,6 +168,11 @@ function restartSlideshow() {
   }, state.settings.intervalSeconds * 1000);
 }
 
+async function advanceToNextImage() {
+  await showRandomImage();
+  restartSlideshow();
+}
+
 async function refreshImages() {
   const directoryPath = state.settings.directoryPath.trim();
 
@@ -193,8 +200,7 @@ async function refreshImages() {
     return;
   }
 
-  await showRandomImage();
-  restartSlideshow();
+  await advanceToNextImage();
 }
 
 function syncFormFromState() {
@@ -226,8 +232,11 @@ settingsDialog.addEventListener("close", () => {
 });
 
 shuffleButton.addEventListener("click", () => {
-  void showRandomImage();
-  restartSlideshow();
+  void advanceToNextImage();
+});
+
+nextButton.addEventListener("click", () => {
+  void advanceToNextImage();
 });
 
 photo.addEventListener("error", () => {
