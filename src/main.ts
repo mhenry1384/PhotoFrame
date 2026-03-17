@@ -9,6 +9,7 @@ type AppState = {
   currentImageIndex: number | null;
   imagePaths: string[];
   imageRequestToken: number;
+  isImageMaximized: boolean;
   settings: AppSettings;
   timerId: number | null;
 };
@@ -17,6 +18,7 @@ const state: AppState = {
   currentImageIndex: null,
   imagePaths: [],
   imageRequestToken: 0,
+  isImageMaximized: false,
   settings: {
     directoryPath: "",
     intervalSeconds: 30,
@@ -25,13 +27,16 @@ const state: AppState = {
 };
 
 const elements = {
+  appShell: document.querySelector<HTMLElement>(".app-shell"),
   currentImageName: document.querySelector<HTMLElement>("#current-image-name"),
   emptyMessage: document.querySelector<HTMLElement>("#empty-message"),
   imageCounter: document.querySelector<HTMLElement>("#image-counter"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
+  maximizeButton: document.querySelector<HTMLButtonElement>("#maximize-image"),
   nextButton: document.querySelector<HTMLButtonElement>("#next-image"),
   photo: document.querySelector<HTMLImageElement>("#photo"),
   photoStage: document.querySelector<HTMLElement>("#photo-stage"),
+  restoreLayoutButton: document.querySelector<HTMLButtonElement>("#restore-layout"),
   settingsButton: document.querySelector<HTMLButtonElement>("#open-settings"),
   settingsDialog: document.querySelector<HTMLDialogElement>("#settings-dialog"),
   settingsForm: document.querySelector<HTMLFormElement>("#settings-form"),
@@ -49,13 +54,16 @@ function requireElement<T>(element: T | null, selector: string): T {
   return element;
 }
 
+const appShell = requireElement(elements.appShell, ".app-shell");
 const currentImageName = requireElement(elements.currentImageName, "#current-image-name");
 const emptyMessage = requireElement(elements.emptyMessage, "#empty-message");
 const imageCounter = requireElement(elements.imageCounter, "#image-counter");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
+const maximizeButton = requireElement(elements.maximizeButton, "#maximize-image");
 const nextButton = requireElement(elements.nextButton, "#next-image");
 const photo = requireElement(elements.photo, "#photo");
 const photoStage = requireElement(elements.photoStage, "#photo-stage");
+const restoreLayoutButton = requireElement(elements.restoreLayoutButton, "#restore-layout");
 const settingsButton = requireElement(elements.settingsButton, "#open-settings");
 const settingsDialog = requireElement(elements.settingsDialog, "#settings-dialog");
 const settingsForm = requireElement(elements.settingsForm, "#settings-form");
@@ -83,6 +91,16 @@ function setSettingsStatus(message: string, isError = false) {
 function setViewerStatus(message: string, isError = false) {
   viewerStatus.textContent = message;
   viewerStatus.dataset.error = isError ? "true" : "false";
+}
+
+function syncImageMaximizedState() {
+  appShell.dataset.imageMaximized = state.isImageMaximized ? "true" : "false";
+  restoreLayoutButton.hidden = !state.isImageMaximized;
+}
+
+function setImageMaximized(isMaximized: boolean) {
+  state.isImageMaximized = isMaximized;
+  syncImageMaximizedState();
 }
 
 function resetTimer() {
@@ -210,6 +228,7 @@ function syncFormFromState() {
 
 async function initializeApp() {
   try {
+    syncImageMaximizedState();
     state.settings = await invoke<AppSettings>("load_settings");
     syncFormFromState();
     await refreshImages();
@@ -237,6 +256,14 @@ shuffleButton.addEventListener("click", () => {
 
 nextButton.addEventListener("click", () => {
   void advanceToNextImage();
+});
+
+maximizeButton.addEventListener("click", () => {
+  setImageMaximized(true);
+});
+
+restoreLayoutButton.addEventListener("click", () => {
+  setImageMaximized(false);
 });
 
 photo.addEventListener("error", () => {

@@ -8,7 +8,7 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <main class="app-shell">
+    <main class="app-shell" data-image-maximized="false">
       <header class="topbar">
         <div>
           <p class="eyebrow">Desktop Slideshow</p>
@@ -20,6 +20,9 @@
           </button>
           <button id="next-image" type="button" class="secondary-button">
             Next
+          </button>
+          <button id="maximize-image" type="button" class="secondary-button">
+            Max
           </button>
           <button id="open-settings" type="button">Settings</button>
         </div>
@@ -41,6 +44,25 @@
       </section>
 
       <section class="photo-stage" id="photo-stage" data-empty="true">
+        <button
+          id="restore-layout"
+          type="button"
+          class="icon-button"
+          aria-label="Exit max image mode"
+          title="Exit max image mode"
+          hidden
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M7 3H3v4M17 3h4v4M3 17v4h4M21 17v4h-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.8"
+            />
+          </svg>
+        </button>
         <img id="photo" alt="Current slideshow image" hidden />
         <div class="empty-state">
           <p id="empty-message">Loading settings...</p>
