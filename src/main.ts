@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
 type AppSettings = {
   directoryPath: string;
@@ -8,6 +8,7 @@ type AppSettings = {
 type AppState = {
   currentImageIndex: number | null;
   imagePaths: string[];
+  imageRequestToken: number;
   settings: AppSettings;
   timerId: number | null;
 };
@@ -15,6 +16,7 @@ type AppState = {
 const state: AppState = {
   currentImageIndex: null,
   imagePaths: [],
+  imageRequestToken: 0,
   settings: {
     directoryPath: "",
     intervalSeconds: 30,
@@ -110,12 +112,21 @@ function chooseRandomIndex(length: number, excludeIndex: number | null): number 
   return nextIndex;
 }
 
-function renderCurrentImage(index: number) {
+async function renderCurrentImage(index: number) {
   const imagePath = state.imagePaths[index];
   const fileName = imagePath.split(/[/\\]/).pop() ?? imagePath;
+  const requestToken = state.imageRequestToken + 1;
+
+  state.imageRequestToken = requestToken;
+  setViewerStatus(`Loading ${fileName}...`);
+
+  const imageSource = await invoke<string>("load_image_data_url", { imagePath });
+  if (requestToken !== state.imageRequestToken) {
+    return;
+  }
 
   state.currentImageIndex = index;
-  photo.src = convertFileSrc(imagePath);
+  photo.src = imageSource;
   photo.alt = fileName;
   currentImageName.textContent = fileName;
   clearViewerMessage();
@@ -123,7 +134,7 @@ function renderCurrentImage(index: number) {
   setViewerStatus(`Showing ${fileName}`);
 }
 
-function showRandomImage() {
+async function showRandomImage() {
   if (state.imagePaths.length === 0) {
     state.currentImageIndex = null;
     currentImageName.textContent = "No image selected";
@@ -134,7 +145,13 @@ function showRandomImage() {
   }
 
   const nextIndex = chooseRandomIndex(state.imagePaths.length, state.currentImageIndex);
-  renderCurrentImage(nextIndex);
+  try {
+    await renderCurrentImage(nextIndex);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setViewerMessage("The selected image could not be displayed.");
+    setViewerStatus(message, true);
+  }
 }
 
 function restartSlideshow() {
@@ -145,7 +162,7 @@ function restartSlideshow() {
   }
 
   state.timerId = window.setInterval(() => {
-    showRandomImage();
+    void showRandomImage();
   }, state.settings.intervalSeconds * 1000);
 }
 
@@ -176,7 +193,7 @@ async function refreshImages() {
     return;
   }
 
-  showRandomImage();
+  await showRandomImage();
   restartSlideshow();
 }
 
@@ -209,8 +226,13 @@ settingsDialog.addEventListener("close", () => {
 });
 
 shuffleButton.addEventListener("click", () => {
-  showRandomImage();
+  void showRandomImage();
   restartSlideshow();
+});
+
+photo.addEventListener("error", () => {
+  setViewerMessage("The current image failed to load.");
+  setViewerStatus("Image decoding failed in the webview.", true);
 });
 
 settingsForm.addEventListener("submit", async (event) => {

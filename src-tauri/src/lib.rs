@@ -85,6 +85,33 @@ fn scan_images(directory_path: String) -> Result<Vec<String>, String> {
     Ok(images)
 }
 
+#[tauri::command]
+fn load_image_data_url(image_path: String) -> Result<String, String> {
+    let path = PathBuf::from(image_path.trim());
+
+    if !path.exists() {
+        return Err("The requested image does not exist.".into());
+    }
+
+    if !path.is_file() {
+        return Err("The requested image path is not a file.".into());
+    }
+
+    if !is_supported_image(&path) {
+        return Err("The requested image format is not supported.".into());
+    }
+
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("Failed to read image {}: {error}", path.display()))?;
+    let mime_type = image_mime_type(&path)?;
+    let encoded = {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.encode(bytes)
+    };
+
+    Ok(format!("data:{mime_type};base64,{encoded}"))
+}
+
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if settings.interval_seconds == 0 {
         return Err("Interval must be at least 1 second.".into());
@@ -115,6 +142,21 @@ fn is_supported_image(path: &Path) -> bool {
             .as_deref(),
         Some("jpg" | "jpeg" | "gif" | "png" | "webp")
     )
+}
+
+fn image_mime_type(path: &Path) -> Result<&'static str, String> {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg" | "jpeg") => Ok("image/jpeg"),
+        Some("gif") => Ok("image/gif"),
+        Some("png") => Ok("image/png"),
+        Some("webp") => Ok("image/webp"),
+        _ => Err("The requested image format is not supported.".into()),
+    }
 }
 
 fn app_file_path(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> {
@@ -252,7 +294,12 @@ pub fn run() {
                 let _ = save_window_state(window);
             }
         })
-        .invoke_handler(tauri::generate_handler![load_settings, save_settings, scan_images])
+        .invoke_handler(tauri::generate_handler![
+            load_settings,
+            save_settings,
+            scan_images,
+            load_image_data_url
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
