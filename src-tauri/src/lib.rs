@@ -2,10 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, Window, WindowEvent,
+    AppHandle, LogicalPosition, LogicalSize, Manager, Position, Size, Window, WindowEvent,
 };
+
+static WINDOW_SAVE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
@@ -20,10 +23,10 @@ struct AppSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WindowState {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
     maximized: bool,
 }
 
@@ -200,21 +203,17 @@ fn restore_window_state(window: &Window) -> Result<(), String> {
     }
 
     let state: WindowState = read_json_file(&state_path)?;
-    if state.width == 0 || state.height == 0 {
-        return Ok(());
-    }
-
-    if !window_state_is_visible(window, &state)? {
+    if state.width <= 0.0 || state.height <= 0.0 {
         return Ok(());
     }
 
     window
-        .set_size(Size::Physical(PhysicalSize::new(state.width, state.height)))
-        .map_err(|error| format!("Failed to restore window size: {error}"))?;
-
-    window
-        .set_position(Position::Physical(PhysicalPosition::new(state.x, state.y)))
+        .set_position(Position::Logical(LogicalPosition::new(state.x, state.y)))
         .map_err(|error| format!("Failed to restore window position: {error}"))?;
+
+    window
+        .set_size(Size::Logical(LogicalSize::new(state.width, state.height)))
+        .map_err(|error| format!("Failed to restore window size: {error}"))?;
 
     if state.maximized {
         window
@@ -225,40 +224,21 @@ fn restore_window_state(window: &Window) -> Result<(), String> {
     Ok(())
 }
 
-fn window_state_is_visible(window: &Window, state: &WindowState) -> Result<bool, String> {
-    let window_left = state.x;
-    let window_top = state.y;
-    let window_right = state.x + state.width as i32;
-    let window_bottom = state.y + state.height as i32;
-
-    let monitors = window
-        .available_monitors()
-        .map_err(|error| format!("Failed to query monitors: {error}"))?;
-
-    Ok(monitors.iter().any(|monitor| {
-        let position = monitor.position();
-        let size = monitor.size();
-        let monitor_left = position.x;
-        let monitor_top = position.y;
-        let monitor_right = position.x + size.width as i32;
-        let monitor_bottom = position.y + size.height as i32;
-
-        window_left < monitor_right
-            && window_right > monitor_left
-            && window_top < monitor_bottom
-            && window_bottom > monitor_top
-    }))
-}
-
 fn save_window_state(window: &Window) -> Result<(), String> {
-    let size = window
+    let physical_size = window
         .outer_size()
         .map_err(|error| format!("Failed to read window size: {error}"))?;
-    let position = window
+    let physical_position = window
         .outer_position()
         .map_err(|error| format!("Failed to read window position: {error}"))?;
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|error| format!("Failed to read window scale factor: {error}"))?;
 
-    if size.width == 0 || size.height == 0 {
+    let size = physical_size.to_logical::<f64>(scale_factor);
+    let position = physical_position.to_logical::<f64>(scale_factor);
+
+    if size.width <= 0.0 || size.height <= 0.0 {
         return Ok(());
     }
 
@@ -279,18 +259,27 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                let host_window = window.as_ref().window();
-                let _ = restore_window_state(&host_window);
-            }
+            let app_handle = app.handle().clone();
+
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(350));
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let host_window = window.as_ref().window();
+                    let _ = restore_window_state(&host_window);
+                }
+
+                WINDOW_SAVE_ENABLED.store(true, Ordering::Release);
+            });
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if matches!(
                 event,
-                WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::CloseRequested { .. }
-            ) {
+                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+            ) || (WINDOW_SAVE_ENABLED.load(Ordering::Acquire)
+                && matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)))
+            {
                 let _ = save_window_state(window);
             }
         })

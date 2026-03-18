@@ -11,6 +11,8 @@ type AppState = {
   imageRequestToken: number;
   isImageMaximized: boolean;
   settings: AppSettings;
+  shuffledOrder: number[];
+  shufflePosition: number;
   timerId: number | null;
 };
 
@@ -23,6 +25,8 @@ const state: AppState = {
     directoryPath: "",
     intervalSeconds: 30,
   },
+  shuffledOrder: [],
+  shufflePosition: 0,
   timerId: null,
 };
 
@@ -120,17 +124,21 @@ function updateImageCounter() {
   imageCounter.textContent = `${state.currentImageIndex + 1} of ${state.imagePaths.length}`;
 }
 
-function chooseRandomIndex(length: number, excludeIndex: number | null): number {
-  if (length <= 1 || excludeIndex === null) {
-    return Math.floor(Math.random() * length);
+function buildShuffledOrder(length: number): number[] {
+  const order = Array.from({ length }, (_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
   }
+  return order;
+}
 
-  let nextIndex = excludeIndex;
-  while (nextIndex === excludeIndex) {
-    nextIndex = Math.floor(Math.random() * length);
+function nextShuffledIndex(): number {
+  if (state.shufflePosition >= state.shuffledOrder.length) {
+    state.shuffledOrder = buildShuffledOrder(state.imagePaths.length);
+    state.shufflePosition = 0;
   }
-
-  return nextIndex;
+  return state.shuffledOrder[state.shufflePosition++];
 }
 
 async function renderCurrentImage(index: number) {
@@ -165,7 +173,7 @@ async function showRandomImage() {
     return;
   }
 
-  const nextIndex = chooseRandomIndex(state.imagePaths.length, state.currentImageIndex);
+  const nextIndex = nextShuffledIndex();
   try {
     await renderCurrentImage(nextIndex);
   } catch (error) {
@@ -209,6 +217,8 @@ async function refreshImages() {
   const imagePaths = await invoke<string[]>("scan_images", { directoryPath });
   state.imagePaths = imagePaths;
   state.currentImageIndex = null;
+  state.shuffledOrder = buildShuffledOrder(imagePaths.length);
+  state.shufflePosition = 0;
 
   if (imagePaths.length === 0) {
     currentImageName.textContent = "No supported images found";
