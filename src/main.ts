@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 type AppSettings = {
   directoryPath: string;
   intervalSeconds: number;
+  imageMaximized: boolean;
 };
 
 type AppState = {
@@ -24,6 +25,7 @@ const state: AppState = {
   settings: {
     directoryPath: "",
     intervalSeconds: 30,
+    imageMaximized: false,
   },
   shuffledOrder: [],
   shufflePosition: 0,
@@ -106,6 +108,14 @@ function syncImageMaximizedState() {
 function setImageMaximized(isMaximized: boolean) {
   state.isImageMaximized = isMaximized;
   syncImageMaximizedState();
+}
+
+async function persistSettings() {
+  const savedSettings = await invoke<AppSettings>("save_settings", {
+    settings: state.settings,
+  });
+
+  state.settings = savedSettings;
 }
 
 function resetTimer() {
@@ -239,8 +249,8 @@ function syncFormFromState() {
 
 async function initializeApp() {
   try {
-    syncImageMaximizedState();
     state.settings = await invoke<AppSettings>("load_settings");
+    setImageMaximized(state.settings.imageMaximized);
     syncFormFromState();
     await refreshImages();
   } catch (error) {
@@ -266,7 +276,14 @@ nextOverlayButton.addEventListener("click", () => {
 });
 
 restoreLayoutButton.addEventListener("click", () => {
-  setImageMaximized(!state.isImageMaximized);
+  const nextImageMaximized = !state.isImageMaximized;
+  setImageMaximized(nextImageMaximized);
+  state.settings.imageMaximized = nextImageMaximized;
+
+  void persistSettings().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setViewerStatus(message, true);
+  });
 });
 
 photo.addEventListener("error", () => {
@@ -285,14 +302,9 @@ settingsForm.addEventListener("submit", async (event) => {
   }
 
   try {
-    const savedSettings = await invoke<AppSettings>("save_settings", {
-      settings: {
-        directoryPath: directoryInput.value.trim(),
-        intervalSeconds,
-      },
-    });
-
-    state.settings = savedSettings;
+    state.settings.directoryPath = directoryInput.value.trim();
+    state.settings.intervalSeconds = intervalSeconds;
+    await persistSettings();
     syncFormFromState();
     await refreshImages();
     settingsDialog.close();

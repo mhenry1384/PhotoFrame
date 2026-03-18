@@ -19,6 +19,8 @@ const DEFAULT_INTERVAL_SECONDS: u32 = 30;
 struct AppSettings {
     directory_path: String,
     interval_seconds: u32,
+    #[serde(default)]
+    image_maximized: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,7 @@ impl Default for AppSettings {
         Self {
             directory_path: String::new(),
             interval_seconds: DEFAULT_INTERVAL_SECONDS,
+            image_maximized: false,
         }
     }
 }
@@ -262,10 +265,11 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(350));
+                std::thread::sleep(std::time::Duration::from_millis(200));
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let host_window = window.as_ref().window();
                     let _ = restore_window_state(&host_window);
+                    let _ = host_window.show();
                 }
 
                 WINDOW_SAVE_ENABLED.store(true, Ordering::Release);
