@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 type AppSettings = {
   directoryPath: string;
@@ -93,17 +94,45 @@ const directoryInput = requireElement(elements.directoryInput, "#directory-path"
 const viewerStatus = requireElement(elements.viewerStatus, "#viewer-status");
 
 let foregroundNudgeTimerId: number | null = null;
+let nativeCoverageListenerReady = false;
 
-function stopForegroundNudgeTimer() {
+type WindowCoverageEvent = {
+  covered: boolean;
+};
+
+function logForegroundNudgeTimer(action: "started" | "stopped" | "reset", detail?: string) {
+  const suffix = detail ? ` (${detail})` : "";
+  void invoke("debug_log", {
+    message: `[foreground-nudge-timer] ${action}${suffix}`,
+  });
+}
+
+function createForegroundNudgeInterval(reason?: string, action: "started" | "reset" = "started") {
+  const intervalMs = state.settings.foregroundNudgeIntervalMinutes * 60 * 1000;
+  foregroundNudgeTimerId = window.setInterval(() => {
+    logForegroundNudgeTimer("reset", "interval elapsed");
+    void invoke("raise_window_without_focus").catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setViewerStatus(message, true);
+      stopForegroundNudgeTimer("raise window failed");
+    });
+  }, intervalMs);
+
+  logForegroundNudgeTimer(
+    action,
+    `${state.settings.foregroundNudgeIntervalMinutes} minute(s)${reason ? `, ${reason}` : ""}`,
+  );
+}
+
+function stopForegroundNudgeTimer(reason?: string) {
   if (foregroundNudgeTimerId !== null) {
     window.clearInterval(foregroundNudgeTimerId);
     foregroundNudgeTimerId = null;
+    logForegroundNudgeTimer("stopped", reason);
   }
 }
 
-function startForegroundNudgeTimer() {
-  stopForegroundNudgeTimer();
-
+function startForegroundNudgeTimer(reason?: string) {
   if (!state.settings.foregroundNudgeEnabled) {
     return;
   }
@@ -112,28 +141,58 @@ function startForegroundNudgeTimer() {
     return;
   }
 
-  const intervalMs = state.settings.foregroundNudgeIntervalMinutes * 60 * 1000;
-  foregroundNudgeTimerId = window.setInterval(() => {
-    void invoke("raise_window_without_focus").catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      setViewerStatus(message, true);
-      stopForegroundNudgeTimer();
-    });
-  }, intervalMs);
+  if (foregroundNudgeTimerId !== null) {
+    return;
+  }
+
+  createForegroundNudgeInterval(reason, "started");
+}
+
+function startForegroundNudgeTimerOnFocusLoss(reason?: string) {
+  if (!state.settings.foregroundNudgeEnabled) {
+    return;
+  }
+
+  if (foregroundNudgeTimerId !== null) {
+    resetForegroundNudgeTimer(reason);
+    return;
+  }
+
+  createForegroundNudgeInterval(reason, "started");
+}
+
+function resetForegroundNudgeTimer(reason?: string) {
+  if (foregroundNudgeTimerId === null) {
+    return;
+  }
+
+  if (!state.settings.foregroundNudgeEnabled || document.hasFocus()) {
+    return;
+  }
+
+  window.clearInterval(foregroundNudgeTimerId);
+  foregroundNudgeTimerId = null;
+
+  createForegroundNudgeInterval(reason, "reset");
 }
 
 function restartForegroundNudgeTimer() {
   if (!state.settings.foregroundNudgeEnabled) {
-    stopForegroundNudgeTimer();
+    stopForegroundNudgeTimer("feature disabled");
     return;
   }
 
   if (document.hasFocus()) {
-    stopForegroundNudgeTimer();
+    stopForegroundNudgeTimer("window focused");
     return;
   }
 
-  startForegroundNudgeTimer();
+  if (foregroundNudgeTimerId !== null) {
+    resetForegroundNudgeTimer("restart requested");
+    return;
+  }
+
+  startForegroundNudgeTimer("restart requested");
 }
 
 function setViewerMessage(message: string) {
@@ -331,6 +390,42 @@ async function initializeApp() {
   }
 }
 
+function setupDomCoverageFallbackListeners() {
+  window.addEventListener("blur", () => {
+    startForegroundNudgeTimerOnFocusLoss("DOM blur fallback");
+  });
+
+  window.addEventListener("focus", () => {
+    stopForegroundNudgeTimer("DOM focus fallback");
+  });
+
+}
+
+async function initializeNativeCoverageListener() {
+  try {
+    await listen<WindowCoverageEvent>("photoframe://window-coverage", (event) => {
+      if (event.payload.covered) {
+        // Native focus loss signal: start or reset countdown.
+        startForegroundNudgeTimerOnFocusLoss("native focus lost");
+        return;
+      }
+
+      stopForegroundNudgeTimer("native focus gained");
+    });
+
+    nativeCoverageListenerReady = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setViewerStatus(
+      `Native window coverage events unavailable (${message}); using browser fallback.`,
+    );
+  }
+
+  if (!nativeCoverageListenerReady) {
+    setupDomCoverageFallbackListeners();
+  }
+}
+
 settingsButton.addEventListener("click", () => {
   syncFormFromState();
   setSettingsStatus("Update settings, then save.");
@@ -410,13 +505,6 @@ settingsForm.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  void initializeNativeCoverageListener();
   void initializeApp();
-});
-
-window.addEventListener("blur", () => {
-  startForegroundNudgeTimer();
-});
-
-window.addEventListener("focus", () => {
-  stopForegroundNudgeTimer();
 });

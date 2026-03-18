@@ -5,13 +5,14 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use tauri::{
-    AppHandle, LogicalPosition, LogicalSize, Manager, Position, Size, Window, WindowEvent,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, Window, WindowEvent,
 };
 
 static WINDOW_SAVE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
+const WINDOW_COVERAGE_EVENT_NAME: &str = "photoframe://window-coverage";
 const DEFAULT_INTERVAL_SECONDS: u32 = 30;
 const DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES: u32 = 1;
 
@@ -43,6 +44,12 @@ struct WindowState {
     width: f64,
     height: f64,
     maximized: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowCoverageEvent {
+    covered: bool,
 }
 
 impl Default for AppSettings {
@@ -103,6 +110,11 @@ fn raise_window_without_focus(app: AppHandle) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+#[tauri::command]
+fn debug_log(message: String) {
+    println!("[PhotoFrame] {message}");
 }
 
 #[tauri::command]
@@ -320,6 +332,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Focused(is_focused) = event {
+                let _ = window.emit(
+                    WINDOW_COVERAGE_EVENT_NAME,
+                    WindowCoverageEvent {
+                        covered: !is_focused,
+                    },
+                );
+            }
+
             if matches!(
                 event,
                 WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
@@ -333,6 +354,7 @@ pub fn run() {
             load_settings,
             save_settings,
             raise_window_without_focus,
+            debug_log,
             scan_images,
             load_image_data_url
         ])
