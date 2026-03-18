@@ -132,6 +132,27 @@
           />
         </label>
 
+        <label class="field">
+          <span>Enable foreground nudge when app is unfocused</span>
+          <input
+            id="foreground-nudge-enabled"
+            name="foregroundNudgeEnabled"
+            type="checkbox"
+          />
+        </label>
+
+        <label class="field">
+          <span>Foreground nudge every X minutes (when unfocused)</span>
+          <input
+            id="foreground-nudge-interval-minutes"
+            name="foregroundNudgeIntervalMinutes"
+            type="number"
+            min="1"
+            step="1"
+            inputmode="numeric"
+          />
+        </label>
+
         <p id="settings-status" class="settings-status"></p>
 
         <menu class="dialog-actions">

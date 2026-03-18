@@ -13,12 +13,25 @@ static WINDOW_SAVE_ENABLED: AtomicBool = AtomicBool::new(false);
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
 const DEFAULT_INTERVAL_SECONDS: u32 = 30;
+const DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES: u32 = 1;
+
+fn default_foreground_nudge_interval_minutes() -> u32 {
+    DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES
+}
+
+fn default_foreground_nudge_enabled() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppSettings {
     directory_path: String,
     interval_seconds: u32,
+    #[serde(default = "default_foreground_nudge_enabled")]
+    foreground_nudge_enabled: bool,
+    #[serde(default = "default_foreground_nudge_interval_minutes")]
+    foreground_nudge_interval_minutes: u32,
     #[serde(default)]
     image_maximized: bool,
 }
@@ -37,6 +50,8 @@ impl Default for AppSettings {
         Self {
             directory_path: String::new(),
             interval_seconds: DEFAULT_INTERVAL_SECONDS,
+            foreground_nudge_enabled: true,
+            foreground_nudge_interval_minutes: DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES,
             image_maximized: false,
         }
     }
@@ -65,6 +80,29 @@ fn save_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings, S
     write_json_file(&settings_path, &settings)?;
 
     Ok(settings)
+}
+
+#[tauri::command]
+fn raise_window_without_focus(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window is not available.".to_string())?;
+
+    window
+        .show()
+        .map_err(|error| format!("Failed to show window: {error}"))?;
+
+    window
+        .set_always_on_top(true)
+        .map_err(|error| format!("Failed to raise window: {error}"))?;
+
+    let window_clone = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        let _ = window_clone.set_always_on_top(false);
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -121,6 +159,10 @@ fn load_image_data_url(image_path: String) -> Result<String, String> {
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if settings.interval_seconds == 0 {
         return Err("Interval must be at least 1 second.".into());
+    }
+
+    if settings.foreground_nudge_enabled && settings.foreground_nudge_interval_minutes == 0 {
+        return Err("Foreground nudge interval must be at least 1 minute.".into());
     }
 
     let directory_path = settings.directory_path.trim();
@@ -290,6 +332,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_settings,
             save_settings,
+            raise_window_without_focus,
             scan_images,
             load_image_data_url
         ])

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 type AppSettings = {
   directoryPath: string;
   intervalSeconds: number;
+  foregroundNudgeEnabled: boolean;
+  foregroundNudgeIntervalMinutes: number;
   imageMaximized: boolean;
 };
 
@@ -25,6 +27,8 @@ const state: AppState = {
   settings: {
     directoryPath: "",
     intervalSeconds: 30,
+    foregroundNudgeEnabled: true,
+    foregroundNudgeIntervalMinutes: 1,
     imageMaximized: false,
   },
   shuffledOrder: [],
@@ -38,6 +42,12 @@ const elements = {
   emptyMessage: document.querySelector<HTMLElement>("#empty-message"),
   imageCounter: document.querySelector<HTMLElement>("#image-counter"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
+  foregroundNudgeEnabledInput: document.querySelector<HTMLInputElement>(
+    "#foreground-nudge-enabled",
+  ),
+  foregroundNudgeIntervalInput: document.querySelector<HTMLInputElement>(
+    "#foreground-nudge-interval-minutes",
+  ),
   nextOverlayButton: document.querySelector<HTMLButtonElement>("#next-image-overlay"),
   photo: document.querySelector<HTMLImageElement>("#photo"),
   photoStage: document.querySelector<HTMLElement>("#photo-stage"),
@@ -63,6 +73,14 @@ const currentImageName = requireElement(elements.currentImageName, "#current-ima
 const emptyMessage = requireElement(elements.emptyMessage, "#empty-message");
 const imageCounter = requireElement(elements.imageCounter, "#image-counter");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
+const foregroundNudgeEnabledInput = requireElement(
+  elements.foregroundNudgeEnabledInput,
+  "#foreground-nudge-enabled",
+);
+const foregroundNudgeIntervalInput = requireElement(
+  elements.foregroundNudgeIntervalInput,
+  "#foreground-nudge-interval-minutes",
+);
 const nextOverlayButton = requireElement(elements.nextOverlayButton, "#next-image-overlay");
 const photo = requireElement(elements.photo, "#photo");
 const photoStage = requireElement(elements.photoStage, "#photo-stage");
@@ -73,6 +91,50 @@ const settingsForm = requireElement(elements.settingsForm, "#settings-form");
 const settingsStatus = requireElement(elements.settingsStatus, "#settings-status");
 const directoryInput = requireElement(elements.directoryInput, "#directory-path");
 const viewerStatus = requireElement(elements.viewerStatus, "#viewer-status");
+
+let foregroundNudgeTimerId: number | null = null;
+
+function stopForegroundNudgeTimer() {
+  if (foregroundNudgeTimerId !== null) {
+    window.clearInterval(foregroundNudgeTimerId);
+    foregroundNudgeTimerId = null;
+  }
+}
+
+function startForegroundNudgeTimer() {
+  stopForegroundNudgeTimer();
+
+  if (!state.settings.foregroundNudgeEnabled) {
+    return;
+  }
+
+  if (document.hasFocus()) {
+    return;
+  }
+
+  const intervalMs = state.settings.foregroundNudgeIntervalMinutes * 60 * 1000;
+  foregroundNudgeTimerId = window.setInterval(() => {
+    void invoke("raise_window_without_focus").catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setViewerStatus(message, true);
+      stopForegroundNudgeTimer();
+    });
+  }, intervalMs);
+}
+
+function restartForegroundNudgeTimer() {
+  if (!state.settings.foregroundNudgeEnabled) {
+    stopForegroundNudgeTimer();
+    return;
+  }
+
+  if (document.hasFocus()) {
+    stopForegroundNudgeTimer();
+    return;
+  }
+
+  startForegroundNudgeTimer();
+}
 
 function setViewerMessage(message: string) {
   emptyMessage.textContent = message;
@@ -242,9 +304,16 @@ async function refreshImages() {
   await advanceToNextImage();
 }
 
+function syncForegroundNudgeInputState() {
+  foregroundNudgeIntervalInput.disabled = !foregroundNudgeEnabledInput.checked;
+}
+
 function syncFormFromState() {
   directoryInput.value = state.settings.directoryPath;
   intervalInput.value = String(state.settings.intervalSeconds);
+  foregroundNudgeEnabledInput.checked = state.settings.foregroundNudgeEnabled;
+  foregroundNudgeIntervalInput.value = String(state.settings.foregroundNudgeIntervalMinutes);
+  syncForegroundNudgeInputState();
 }
 
 async function initializeApp() {
@@ -253,6 +322,7 @@ async function initializeApp() {
     setImageMaximized(state.settings.imageMaximized);
     syncFormFromState();
     await refreshImages();
+    restartForegroundNudgeTimer();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setViewerMessage("The application settings could not be loaded.");
@@ -263,7 +333,7 @@ async function initializeApp() {
 
 settingsButton.addEventListener("click", () => {
   syncFormFromState();
-  setSettingsStatus("Update the directory path and interval, then save.");
+  setSettingsStatus("Update settings, then save.");
   settingsDialog.showModal();
 });
 
@@ -291,21 +361,46 @@ photo.addEventListener("error", () => {
   setViewerStatus("Image decoding failed in the webview.", true);
 });
 
+foregroundNudgeEnabledInput.addEventListener("change", () => {
+  syncForegroundNudgeInputState();
+});
+
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const intervalSeconds = Number.parseInt(intervalInput.value, 10);
+  const foregroundNudgeEnabled = foregroundNudgeEnabledInput.checked;
+  const foregroundNudgeIntervalMinutes = Number.parseInt(
+    foregroundNudgeIntervalInput.value,
+    10,
+  );
 
   if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1) {
     setSettingsStatus("Interval must be a whole number of at least 1 second.", true);
     return;
   }
 
+  if (
+    foregroundNudgeEnabled
+    && (!Number.isInteger(foregroundNudgeIntervalMinutes) || foregroundNudgeIntervalMinutes < 1)
+  ) {
+    setSettingsStatus(
+      "Foreground nudge interval must be a whole number of at least 1 minute.",
+      true,
+    );
+    return;
+  }
+
   try {
     state.settings.directoryPath = directoryInput.value.trim();
     state.settings.intervalSeconds = intervalSeconds;
+    state.settings.foregroundNudgeEnabled = foregroundNudgeEnabled;
+    if (foregroundNudgeEnabled) {
+      state.settings.foregroundNudgeIntervalMinutes = foregroundNudgeIntervalMinutes;
+    }
     await persistSettings();
     syncFormFromState();
+    restartForegroundNudgeTimer();
     await refreshImages();
     settingsDialog.close();
   } catch (error) {
@@ -316,4 +411,12 @@ settingsForm.addEventListener("submit", async (event) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   void initializeApp();
+});
+
+window.addEventListener("blur", () => {
+  startForegroundNudgeTimer();
+});
+
+window.addEventListener("focus", () => {
+  stopForegroundNudgeTimer();
 });
