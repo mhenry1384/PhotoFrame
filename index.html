@@ -13,6 +13,7 @@
         <div>
           <p class="eyebrow">Desktop Slideshow</p>
           <h1>PhotoFrame <span class="version-label">v0.1.6</span></h1>
+          <p class="owner-label">Matthew Henry</p>
         </div>
         <div class="topbar-actions">
           <button id="open-settings" type="button">Settings</button>
@@ -141,7 +142,7 @@
             </svg>
           </button>
         </div>
-        <img id="photo" alt="Current slideshow image" hidden />
+        <img id="photo" alt="" hidden />
         <div class="photo-info-overlay" id="photo-info-overlay">
           <span id="overlay-date"></span>
           <span id="overlay-path"></span>
@@ -161,49 +162,61 @@
           </div>
         </div>
 
-        <label class="field">
+        <div class="field">
           <span>Image directory</span>
-          <input
-            id="directory-path"
-            name="directoryPath"
-            type="text"
-            placeholder="/Users/you/Pictures"
-            autocomplete="off"
-          />
-        </label>
+          <div class="input-with-button">
+            <input
+              id="directory-path"
+              name="directoryPath"
+              type="text"
+              placeholder="C:\Users\you\Pictures"
+              autocomplete="off"
+            />
+            <button type="button" id="browse-directory" class="secondary-button browse-button" title="Browse for folder">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="16" height="16">
+                <path d="M3 7h6l2 2h10v11H3V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
 
-        <label class="field">
-          <span>Interval in seconds</span>
+        <div class="field">
+          <span>Photo interval</span>
           <input
             id="interval-seconds"
             name="intervalSeconds"
-            type="number"
-            min="1"
+            type="range"
+            min="0"
+            max="4"
             step="1"
-            inputmode="numeric"
           />
-        </label>
+          <div class="slider-ticks" aria-hidden="true">
+            <span>1 min</span>
+            <span>5 min</span>
+            <span>15 min</span>
+            <span>30 min</span>
+            <span>60 min</span>
+          </div>
+        </div>
 
-        <label class="field">
-          <span>Enable foreground nudge when app is unfocused</span>
-          <input
-            id="foreground-nudge-enabled"
-            name="foregroundNudgeEnabled"
-            type="checkbox"
-          />
-        </label>
-
-        <label class="field">
-          <span>Foreground nudge every X minutes (when unfocused)</span>
+        <div class="field">
+          <span>Foreground nudge interval (when unfocused)</span>
           <input
             id="foreground-nudge-interval-minutes"
             name="foregroundNudgeIntervalMinutes"
-            type="number"
-            min="1"
+            type="range"
+            min="0"
+            max="4"
             step="1"
-            inputmode="numeric"
           />
-        </label>
+          <div class="slider-ticks" aria-hidden="true">
+            <span>Never</span>
+            <span>1 min</span>
+            <span>5 min</span>
+            <span>15 min</span>
+            <span>60 min</span>
+          </div>
+        </div>
 
         <label class="field">
           <span>Show path on photo (maximized mode)</span>
@@ -234,7 +247,7 @@
           >
             Cancel
           </button>
-          <button type="submit">Save</button>
+          <button type="submit" id="settings-save" disabled>Save</button>
         </menu>
       </form>
     </dialog>

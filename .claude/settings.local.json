@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(rm \"c:/GitHub/PhotoFrame/.mcp.json\")",
-      "PowerShell(npm run tauri dev)"
+      "PowerShell(npm run tauri dev)",
+      "Bash(git config *)",
+      "Bash(npm install *)"
     ],
     "additionalDirectories": [
       "c:\\GitHub\\PhotoFrame"

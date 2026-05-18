@@ -1,33 +1,74 @@
 # PhotoFrame
 
-PhotoFrame is a Tauri desktop app that rotates images from a configured directory at a fixed interval.
+A desktop slideshow app built with [Tauri](https://tauri.app) and TypeScript. Point it at a folder of photos and it cycles through them automatically, staying visible on your desktop while you work.
+
+![PhotoFrame screenshot](screenshot.png)
 
 ## Features
 
-- Resizable desktop window
-- Persistent window size and placement
-- Offscreen window-state protection on launch
-- JSON-backed settings for directory path and interval seconds
-- Random slideshow rotation for `.jpg`, `.jpeg`, `.gif`, `.png`, and `.webp`
-- Full-image scaling using aspect-ratio-preserving fit behavior
+### Slideshow
+- Shuffled playback — every image is shown once before any repeats
+- Recursive subfolder scanning (`.jpg`, `.jpeg`, `.gif`, `.png`, `.webp`)
+- Configurable interval: 1, 5, 15, 30, or 60 minutes
+- Previous / pause / next controls
+- Blurred background fill behind each photo
 
-## Development
+### Display
+- **Maximized mode** — expands the photo to fill the full window, hiding the status bar
+- **Path overlay** — shows the subfolder path at the bottom-left corner (maximized mode only)
+- **Date overlay** — reads the EXIF `DateTimeOriginal` tag and displays the date (JPEG only, maximized mode only)
 
-1. Install dependencies:
+### Foreground nudge
+When the app is unfocused, it can periodically raise itself to the foreground without stealing keyboard focus. Configurable interval: Never, 1, 5, 15, or 60 minutes.
 
-   ```bash
-   npm install
-   ```
+### Settings
+- Image directory — freeform text or native folder picker
+- All settings are persisted to `settings.json` in the platform app-config directory
+- Window size and position are restored on launch
 
-2. Start the desktop app:
+## Getting started
 
-   ```bash
-   npm run tauri dev
-   ```
+### Prerequisites
 
-## Settings Storage
+- [Node.js](https://nodejs.org) 18+
+- [Rust](https://rustup.rs) (stable)
+- [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform
 
-The application stores its settings and window state in the platform app config directory.
+### Install dependencies
 
-- `settings.json`
-- `window-state.json`
+```bash
+npm install
+```
+
+### Run in development
+
+```bash
+npm run tauri dev
+```
+
+### Build for production
+
+```bash
+npm run tauri build
+```
+
+## Usage
+
+1. Click **Settings** and choose an image directory (type a path or use the folder picker).
+2. Set how often photos should change and how often the app should nudge itself to the foreground.
+3. Click **Save**. The slideshow starts immediately.
+4. Use the **◀ ⏸ ▶** buttons on the photo to navigate or pause.
+5. Click the expand icon to enter maximized mode, which hides the UI and shows path/date overlays directly on the photo.
+
+## Data stored
+
+| File | Location | Contents |
+|---|---|---|
+| `settings.json` | Platform app-config dir | Directory, interval, nudge settings, overlay preferences |
+| `window-state.json` | Platform app-config dir | Window position and size |
+
+## Built with
+
+- [Tauri 2](https://tauri.app) — native shell
+- [Vite](https://vitejs.dev) + TypeScript — frontend
+- [kamadak-exif](https://crates.io/crates/kamadak-exif) — EXIF date reading

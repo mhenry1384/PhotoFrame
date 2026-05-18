@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 type AppSettings = {
   directoryPath: string;
@@ -55,13 +56,12 @@ const elements = {
   imageDate: document.querySelector<HTMLElement>("#image-date"),
   imagePathEl: document.querySelector<HTMLElement>("#image-path"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
+  browseButton: document.querySelector<HTMLButtonElement>("#browse-directory"),
+  saveButton: document.querySelector<HTMLButtonElement>("#settings-save"),
   overlayDate: document.querySelector<HTMLElement>("#overlay-date"),
   overlayPath: document.querySelector<HTMLElement>("#overlay-path"),
   showPathOnPhotoInput: document.querySelector<HTMLInputElement>("#show-path-on-photo"),
   showDateOnPhotoInput: document.querySelector<HTMLInputElement>("#show-date-on-photo"),
-  foregroundNudgeEnabledInput: document.querySelector<HTMLInputElement>(
-    "#foreground-nudge-enabled",
-  ),
   foregroundNudgeIntervalInput: document.querySelector<HTMLInputElement>(
     "#foreground-nudge-interval-minutes",
   ),
@@ -95,14 +95,12 @@ const imageCounter = requireElement(elements.imageCounter, "#image-counter");
 const imageDate = requireElement(elements.imageDate, "#image-date");
 const imagePathEl = requireElement(elements.imagePathEl, "#image-path");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
+const browseButton = requireElement(elements.browseButton, "#browse-directory");
+const saveButton = requireElement(elements.saveButton, "#settings-save");
 const overlayDate = requireElement(elements.overlayDate, "#overlay-date");
 const overlayPath = requireElement(elements.overlayPath, "#overlay-path");
 const showPathOnPhotoInput = requireElement(elements.showPathOnPhotoInput, "#show-path-on-photo");
 const showDateOnPhotoInput = requireElement(elements.showDateOnPhotoInput, "#show-date-on-photo");
-const foregroundNudgeEnabledInput = requireElement(
-  elements.foregroundNudgeEnabledInput,
-  "#foreground-nudge-enabled",
-);
 const foregroundNudgeIntervalInput = requireElement(
   elements.foregroundNudgeIntervalInput,
   "#foreground-nudge-interval-minutes",
@@ -227,6 +225,7 @@ function setViewerMessage(message: string) {
   emptyMessage.textContent = message;
   photoStage.dataset.empty = "true";
   photo.hidden = true;
+  photo.alt = "";
 }
 
 function clearViewerMessage() {
@@ -445,18 +444,39 @@ async function refreshImages() {
   await advanceToNextImage();
 }
 
-function syncForegroundNudgeInputState() {
-  foregroundNudgeIntervalInput.disabled = !foregroundNudgeEnabledInput.checked;
+const INTERVAL_MINUTES = [1, 5, 15, 30, 60] as const;
+const NUDGE_MINUTES = [0, 1, 5, 15, 60] as const;
+
+function intervalSliderPosition(): number {
+  const minutes = Math.round(state.settings.intervalSeconds / 60);
+  const idx = (INTERVAL_MINUTES as readonly number[]).indexOf(minutes);
+  return idx >= 0 ? idx : 2;
 }
+
+function nudgeSliderPosition(): number {
+  if (!state.settings.foregroundNudgeEnabled) return 0;
+  const idx = NUDGE_MINUTES.indexOf(state.settings.foregroundNudgeIntervalMinutes as typeof NUDGE_MINUTES[number]);
+  return idx > 0 ? idx : 1;
+}
+
+function getFormSnapshot(): string {
+  return JSON.stringify({
+    dir: directoryInput.value.trim(),
+    interval: intervalInput.value,
+    nudge: foregroundNudgeIntervalInput.value,
+    pathOnPhoto: showPathOnPhotoInput.checked,
+    dateOnPhoto: showDateOnPhotoInput.checked,
+  });
+}
+
+let settingsOpenSnapshot = "";
 
 function syncFormFromState() {
   directoryInput.value = state.settings.directoryPath;
-  intervalInput.value = String(state.settings.intervalSeconds);
-  foregroundNudgeEnabledInput.checked = state.settings.foregroundNudgeEnabled;
-  foregroundNudgeIntervalInput.value = String(state.settings.foregroundNudgeIntervalMinutes);
+  intervalInput.value = String(intervalSliderPosition());
+  foregroundNudgeIntervalInput.value = String(nudgeSliderPosition());
   showPathOnPhotoInput.checked = state.settings.showPathOnPhoto;
   showDateOnPhotoInput.checked = state.settings.showDateOnPhoto;
-  syncForegroundNudgeInputState();
 }
 
 async function initializeApp() {
@@ -510,10 +530,26 @@ async function initializeNativeCoverageListener() {
   }
 }
 
+browseButton.addEventListener("click", () => {
+  const currentDir = directoryInput.value.trim() || undefined;
+  void openDialog({ directory: true, multiple: false, defaultPath: currentDir }).then((selected) => {
+    if (typeof selected === "string") {
+      directoryInput.value = selected;
+      directoryInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+});
+
 settingsButton.addEventListener("click", () => {
   syncFormFromState();
-  setSettingsStatus("Update settings, then save.");
+  settingsOpenSnapshot = getFormSnapshot();
+  saveButton.disabled = true;
+  setSettingsStatus("");
   settingsDialog.showModal();
+});
+
+settingsForm.addEventListener("input", () => {
+  saveButton.disabled = getFormSnapshot() === settingsOpenSnapshot;
 });
 
 settingsDialog.addEventListener("close", () => {
@@ -548,48 +584,28 @@ photo.addEventListener("error", () => {
   setViewerStatus("Image decoding failed in the webview.", true);
 });
 
-foregroundNudgeEnabledInput.addEventListener("change", () => {
-  syncForegroundNudgeInputState();
-});
-
 settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const intervalSeconds = Number.parseInt(intervalInput.value, 10);
-  const foregroundNudgeEnabled = foregroundNudgeEnabledInput.checked;
-  const foregroundNudgeIntervalMinutes = Number.parseInt(
-    foregroundNudgeIntervalInput.value,
-    10,
-  );
-
-  if (!Number.isInteger(intervalSeconds) || intervalSeconds < 1) {
-    setSettingsStatus("Interval must be a whole number of at least 1 second.", true);
-    return;
-  }
-
-  if (
-    foregroundNudgeEnabled
-    && (!Number.isInteger(foregroundNudgeIntervalMinutes) || foregroundNudgeIntervalMinutes < 1)
-  ) {
-    setSettingsStatus(
-      "Foreground nudge interval must be a whole number of at least 1 minute.",
-      true,
-    );
-    return;
-  }
+  const intervalPosition = Number.parseInt(intervalInput.value, 10);
+  const intervalSeconds = (INTERVAL_MINUTES[intervalPosition] ?? 1) * 60;
+  const nudgePosition = Number.parseInt(foregroundNudgeIntervalInput.value, 10);
+  const nudgeMinutes = NUDGE_MINUTES[nudgePosition] ?? 0;
 
   try {
     state.settings.directoryPath = directoryInput.value.trim();
     state.settings.intervalSeconds = intervalSeconds;
-    state.settings.foregroundNudgeEnabled = foregroundNudgeEnabled;
-    if (foregroundNudgeEnabled) {
-      state.settings.foregroundNudgeIntervalMinutes = foregroundNudgeIntervalMinutes;
+    state.settings.foregroundNudgeEnabled = nudgeMinutes > 0;
+    if (nudgeMinutes > 0) {
+      state.settings.foregroundNudgeIntervalMinutes = nudgeMinutes;
     }
     state.settings.showPathOnPhoto = showPathOnPhotoInput.checked;
     state.settings.showDateOnPhoto = showDateOnPhotoInput.checked;
     await persistSettings();
     syncImageMaximizedState();
     syncFormFromState();
+    settingsOpenSnapshot = getFormSnapshot();
+    saveButton.disabled = true;
     restartForegroundNudgeTimer();
     await refreshImages();
     settingsDialog.close();

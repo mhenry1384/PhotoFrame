@@ -61,6 +61,14 @@ button:hover {
   box-shadow: 0 24px 36px rgba(17, 9, 10, 0.38);
 }
 
+button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+
 button.secondary-button {
   background: rgba(255, 244, 228, 0.08);
   color: #f6e9d7;
@@ -156,6 +164,13 @@ h1 {
   font-size: clamp(2rem, 4vw, 3.1rem);
 }
 
+.owner-label {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
 .version-label {
   font-size: 0.4em;
   font-weight: 400;
@@ -183,6 +198,28 @@ h2 {
 input[type="checkbox"] {
   width: auto;
   justify-self: start;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.1rem;
+  margin-top: 0.15rem;
+}
+
+.slider-ticks span {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-align: center;
 }
 
 .statusbar strong {
@@ -388,6 +425,27 @@ dialog::backdrop {
 .field {
   display: grid;
   gap: 0.45rem;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.input-with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-button {
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
 }
 
 .field span {
