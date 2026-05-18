@@ -162,31 +162,62 @@ fn scan_images(directory_path: String) -> Result<Vec<String>, String> {
     Ok(images)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageExif {
+    date: Option<String>,
+    description: Option<String>,
+}
+
 #[tauri::command]
-fn get_image_date(image_path: String) -> Option<String> {
+fn get_image_exif(image_path: String) -> ImageExif {
+    let mut result = ImageExif { date: None, description: None };
+
     let path = PathBuf::from(image_path.trim());
-    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    let ext = match path.extension() {
+        Some(e) => e.to_string_lossy().to_lowercase(),
+        None => return result,
+    };
     if ext != "jpg" && ext != "jpeg" {
-        return None;
+        return result;
     }
 
-    let file = fs::File::open(&path).ok()?;
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return result,
+    };
     let mut reader = std::io::BufReader::new(file);
-    let exif = exif::Reader::new().read_from_container(&mut reader).ok()?;
-    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
-
-    let dt = if let exif::Value::Ascii(ref vec) = field.value {
-        vec.first().and_then(|bytes| exif::DateTime::from_ascii(bytes).ok())?
-    } else {
-        return None;
+    let exif = match exif::Reader::new().read_from_container(&mut reader) {
+        Ok(e) => e,
+        Err(_) => return result,
     };
 
-    let months = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ];
-    let month = months.get(dt.month as usize - 1)?;
-    Some(format!("{month} {}, {}", dt.day, dt.year))
+    if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
+        if let exif::Value::Ascii(ref vec) = field.value {
+            if let Some(dt) = vec.first().and_then(|b| exif::DateTime::from_ascii(b).ok()) {
+                let months = [
+                    "January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December",
+                ];
+                if let Some(month) = months.get(dt.month as usize - 1) {
+                    result.date = Some(format!("{month} {}, {}", dt.day, dt.year));
+                }
+            }
+        }
+    }
+
+    if let Some(field) = exif.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY) {
+        if let exif::Value::Ascii(ref vec) = field.value {
+            if let Some(bytes) = vec.first() {
+                let desc = String::from_utf8_lossy(bytes).trim().to_string();
+                if !desc.is_empty() {
+                    result.description = Some(desc);
+                }
+            }
+        }
+    }
+
+    result
 }
 
 #[tauri::command]
@@ -308,7 +339,12 @@ fn restore_window_state(window: &Window) -> Result<(), String> {
     }
 
     let state: WindowState = read_json_file(&state_path)?;
-    if state.width <= 0.0 || state.height <= 0.0 {
+    if state.width <= 100.0 || state.height <= 100.0 {
+        return Ok(());
+    }
+
+    // Reject positions that are clearly off-screen (e.g. stale multi-monitor state).
+    if state.x < -state.width || state.y < -state.height || state.x > 32000.0 || state.y > 32000.0 {
         return Ok(());
     }
 
@@ -330,6 +366,10 @@ fn restore_window_state(window: &Window) -> Result<(), String> {
 }
 
 fn save_window_state(window: &Window) -> Result<(), String> {
+    if window.is_minimized().unwrap_or(false) {
+        return Ok(());
+    }
+
     let physical_size = window
         .outer_size()
         .map_err(|error| format!("Failed to read window size: {error}"))?;
@@ -405,7 +445,7 @@ pub fn run() {
             raise_window_without_focus,
             debug_log,
             scan_images,
-            get_image_date,
+            get_image_exif,
             load_image_data_url
         ])
         .run(tauri::generate_context!())

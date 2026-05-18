@@ -4,7 +4,8 @@
       "Bash(rm \"c:/GitHub/PhotoFrame/.mcp.json\")",
       "PowerShell(npm run tauri dev)",
       "Bash(git config *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\com.matthewhenry.photoframe\" -ErrorAction SilentlyContinue)"
     ],
     "additionalDirectories": [
       "c:\\GitHub\\PhotoFrame"

@@ -304,9 +304,9 @@ async function renderCurrentImage(index: number) {
   state.imageRequestToken = requestToken;
   setViewerStatus(`Loading ${fileName}...`);
 
-  const [imageSource, date] = await Promise.all([
+  const [imageSource, exif] = await Promise.all([
     invoke<string>("load_image_data_url", { imagePath }),
-    invoke<string | null>("get_image_date", { imagePath }),
+    invoke<{ date: string | null; description: string | null }>("get_image_exif", { imagePath }),
   ]);
   if (requestToken !== state.imageRequestToken) {
     return;
@@ -318,12 +318,13 @@ async function renderCurrentImage(index: number) {
   photo.alt = fileName;
   currentImageName.textContent = fileName;
   const dir = state.settings.directoryPath.replace(/[/\\]+$/, "");
-  const rel = imageSource ? state.imagePaths[index].slice(dir.length).replace(/^[/\\]/, "") : "";
+  const rel = state.imagePaths[index].slice(dir.length).replace(/^[/\\]/, "");
   const relDir = rel.includes("/") || rel.includes("\\") ? rel.replace(/[/\\][^/\\]+$/, "") : "";
-  imagePathEl.textContent = relDir;
-  imageDate.textContent = date ?? "";
-  overlayDate.textContent = date ?? "";
-  overlayPath.textContent = relDir;
+  const displayPath = exif.description ?? relDir;
+  imagePathEl.textContent = displayPath;
+  imageDate.textContent = exif.date ?? "";
+  overlayDate.textContent = exif.date ?? "";
+  overlayPath.textContent = displayPath;
   clearViewerMessage();
   updateImageCounter();
   setViewerStatus(`Showing ${fileName}`);
