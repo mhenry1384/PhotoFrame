@@ -7,13 +7,18 @@ type AppSettings = {
   foregroundNudgeEnabled: boolean;
   foregroundNudgeIntervalMinutes: number;
   imageMaximized: boolean;
+  showPathOnPhoto: boolean;
+  showDateOnPhoto: boolean;
 };
 
 type AppState = {
   currentImageIndex: number | null;
   imagePaths: string[];
+  imageHistory: number[];
+  historyPosition: number;
   imageRequestToken: number;
   isImageMaximized: boolean;
+  isPaused: boolean;
   settings: AppSettings;
   shuffledOrder: number[];
   shufflePosition: number;
@@ -23,14 +28,19 @@ type AppState = {
 const state: AppState = {
   currentImageIndex: null,
   imagePaths: [],
+  imageHistory: [],
+  historyPosition: -1,
   imageRequestToken: 0,
   isImageMaximized: false,
+  isPaused: false,
   settings: {
     directoryPath: "",
     intervalSeconds: 30,
     foregroundNudgeEnabled: true,
     foregroundNudgeIntervalMinutes: 1,
     imageMaximized: false,
+    showPathOnPhoto: true,
+    showDateOnPhoto: true,
   },
   shuffledOrder: [],
   shufflePosition: 0,
@@ -42,7 +52,13 @@ const elements = {
   currentImageName: document.querySelector<HTMLElement>("#current-image-name"),
   emptyMessage: document.querySelector<HTMLElement>("#empty-message"),
   imageCounter: document.querySelector<HTMLElement>("#image-counter"),
+  imageDate: document.querySelector<HTMLElement>("#image-date"),
+  imagePathEl: document.querySelector<HTMLElement>("#image-path"),
   intervalInput: document.querySelector<HTMLInputElement>("#interval-seconds"),
+  overlayDate: document.querySelector<HTMLElement>("#overlay-date"),
+  overlayPath: document.querySelector<HTMLElement>("#overlay-path"),
+  showPathOnPhotoInput: document.querySelector<HTMLInputElement>("#show-path-on-photo"),
+  showDateOnPhotoInput: document.querySelector<HTMLInputElement>("#show-date-on-photo"),
   foregroundNudgeEnabledInput: document.querySelector<HTMLInputElement>(
     "#foreground-nudge-enabled",
   ),
@@ -50,7 +66,10 @@ const elements = {
     "#foreground-nudge-interval-minutes",
   ),
   nextOverlayButton: document.querySelector<HTMLButtonElement>("#next-image-overlay"),
+  pauseResumeButton: document.querySelector<HTMLButtonElement>("#pause-resume-overlay"),
+  prevOverlayButton: document.querySelector<HTMLButtonElement>("#prev-image-overlay"),
   photo: document.querySelector<HTMLImageElement>("#photo"),
+  photoBg: document.querySelector<HTMLElement>("#photo-bg"),
   photoStage: document.querySelector<HTMLElement>("#photo-stage"),
   restoreLayoutButton: document.querySelector<HTMLButtonElement>("#restore-layout"),
   settingsButton: document.querySelector<HTMLButtonElement>("#open-settings"),
@@ -73,7 +92,13 @@ const appShell = requireElement(elements.appShell, ".app-shell");
 const currentImageName = requireElement(elements.currentImageName, "#current-image-name");
 const emptyMessage = requireElement(elements.emptyMessage, "#empty-message");
 const imageCounter = requireElement(elements.imageCounter, "#image-counter");
+const imageDate = requireElement(elements.imageDate, "#image-date");
+const imagePathEl = requireElement(elements.imagePathEl, "#image-path");
 const intervalInput = requireElement(elements.intervalInput, "#interval-seconds");
+const overlayDate = requireElement(elements.overlayDate, "#overlay-date");
+const overlayPath = requireElement(elements.overlayPath, "#overlay-path");
+const showPathOnPhotoInput = requireElement(elements.showPathOnPhotoInput, "#show-path-on-photo");
+const showDateOnPhotoInput = requireElement(elements.showDateOnPhotoInput, "#show-date-on-photo");
 const foregroundNudgeEnabledInput = requireElement(
   elements.foregroundNudgeEnabledInput,
   "#foreground-nudge-enabled",
@@ -83,7 +108,10 @@ const foregroundNudgeIntervalInput = requireElement(
   "#foreground-nudge-interval-minutes",
 );
 const nextOverlayButton = requireElement(elements.nextOverlayButton, "#next-image-overlay");
+const pauseResumeButton = requireElement(elements.pauseResumeButton, "#pause-resume-overlay");
+const prevOverlayButton = requireElement(elements.prevOverlayButton, "#prev-image-overlay");
 const photo = requireElement(elements.photo, "#photo");
+const photoBg = requireElement(elements.photoBg, "#photo-bg");
 const photoStage = requireElement(elements.photoStage, "#photo-stage");
 const restoreLayoutButton = requireElement(elements.restoreLayoutButton, "#restore-layout");
 const settingsButton = requireElement(elements.settingsButton, "#open-settings");
@@ -218,6 +246,8 @@ function setViewerStatus(message: string, isError = false) {
 
 function syncImageMaximizedState() {
   appShell.dataset.imageMaximized = state.isImageMaximized ? "true" : "false";
+  appShell.dataset.showPathOnPhoto = state.settings.showPathOnPhoto ? "true" : "false";
+  appShell.dataset.showDateOnPhoto = state.settings.showDateOnPhoto ? "true" : "false";
   const buttonLabel = state.isImageMaximized
     ? "Exit max image mode"
     : "Enter max image mode";
@@ -247,12 +277,7 @@ function resetTimer() {
 }
 
 function updateImageCounter() {
-  if (state.imagePaths.length === 0 || state.currentImageIndex === null) {
-    imageCounter.textContent = "0 images";
-    return;
-  }
-
-  imageCounter.textContent = `${state.currentImageIndex + 1} of ${state.imagePaths.length}`;
+  imageCounter.textContent = String(state.imagePaths.length);
 }
 
 function buildShuffledOrder(length: number): number[] {
@@ -280,15 +305,26 @@ async function renderCurrentImage(index: number) {
   state.imageRequestToken = requestToken;
   setViewerStatus(`Loading ${fileName}...`);
 
-  const imageSource = await invoke<string>("load_image_data_url", { imagePath });
+  const [imageSource, date] = await Promise.all([
+    invoke<string>("load_image_data_url", { imagePath }),
+    invoke<string | null>("get_image_date", { imagePath }),
+  ]);
   if (requestToken !== state.imageRequestToken) {
     return;
   }
 
   state.currentImageIndex = index;
   photo.src = imageSource;
+  photoBg.style.backgroundImage = `url(${imageSource})`;
   photo.alt = fileName;
   currentImageName.textContent = fileName;
+  const dir = state.settings.directoryPath.replace(/[/\\]+$/, "");
+  const rel = imageSource ? state.imagePaths[index].slice(dir.length).replace(/^[/\\]/, "") : "";
+  const relDir = rel.includes("/") || rel.includes("\\") ? rel.replace(/[/\\][^/\\]+$/, "") : "";
+  imagePathEl.textContent = relDir;
+  imageDate.textContent = date ?? "";
+  overlayDate.textContent = date ?? "";
+  overlayPath.textContent = relDir;
   clearViewerMessage();
   updateImageCounter();
   setViewerStatus(`Showing ${fileName}`);
@@ -304,9 +340,33 @@ async function showRandomImage() {
     return;
   }
 
+  state.imageHistory = state.imageHistory.slice(0, state.historyPosition + 1);
   const nextIndex = nextShuffledIndex();
+  state.imageHistory.push(nextIndex);
+  if (state.imageHistory.length > 100) {
+    state.imageHistory.shift();
+  }
+  state.historyPosition = state.imageHistory.length - 1;
+
   try {
     await renderCurrentImage(nextIndex);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setViewerMessage("The selected image could not be displayed.");
+    setViewerStatus(message, true);
+  }
+}
+
+async function showPreviousImage() {
+  if (state.imagePaths.length === 0 || state.historyPosition <= 0) {
+    return;
+  }
+
+  state.historyPosition--;
+  const index = state.imageHistory[state.historyPosition];
+
+  try {
+    await renderCurrentImage(index);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setViewerMessage("The selected image could not be displayed.");
@@ -317,13 +377,33 @@ async function showRandomImage() {
 function restartSlideshow() {
   resetTimer();
 
-  if (state.imagePaths.length === 0) {
+  if (state.isPaused || state.imagePaths.length === 0) {
     return;
   }
 
   state.timerId = window.setInterval(() => {
     void showRandomImage();
   }, state.settings.intervalSeconds * 1000);
+}
+
+function syncPauseState() {
+  pauseResumeButton.dataset.paused = state.isPaused ? "true" : "false";
+  const label = state.isPaused ? "Resume slideshow" : "Pause slideshow";
+  pauseResumeButton.setAttribute("aria-label", label);
+  pauseResumeButton.title = label;
+}
+
+function togglePause() {
+  state.isPaused = !state.isPaused;
+  syncPauseState();
+
+  if (state.isPaused) {
+    resetTimer();
+    stopForegroundNudgeTimer("slideshow paused");
+  } else {
+    restartSlideshow();
+    restartForegroundNudgeTimer();
+  }
 }
 
 async function advanceToNextImage() {
@@ -348,6 +428,8 @@ async function refreshImages() {
   const imagePaths = await invoke<string[]>("scan_images", { directoryPath });
   state.imagePaths = imagePaths;
   state.currentImageIndex = null;
+  state.imageHistory = [];
+  state.historyPosition = -1;
   state.shuffledOrder = buildShuffledOrder(imagePaths.length);
   state.shufflePosition = 0;
 
@@ -372,6 +454,8 @@ function syncFormFromState() {
   intervalInput.value = String(state.settings.intervalSeconds);
   foregroundNudgeEnabledInput.checked = state.settings.foregroundNudgeEnabled;
   foregroundNudgeIntervalInput.value = String(state.settings.foregroundNudgeIntervalMinutes);
+  showPathOnPhotoInput.checked = state.settings.showPathOnPhoto;
+  showDateOnPhotoInput.checked = state.settings.showDateOnPhoto;
   syncForegroundNudgeInputState();
 }
 
@@ -436,6 +520,14 @@ settingsDialog.addEventListener("close", () => {
   setSettingsStatus("");
 });
 
+pauseResumeButton.addEventListener("click", () => {
+  togglePause();
+});
+
+prevOverlayButton.addEventListener("click", () => {
+  void showPreviousImage();
+});
+
 nextOverlayButton.addEventListener("click", () => {
   void advanceToNextImage();
 });
@@ -493,7 +585,10 @@ settingsForm.addEventListener("submit", async (event) => {
     if (foregroundNudgeEnabled) {
       state.settings.foregroundNudgeIntervalMinutes = foregroundNudgeIntervalMinutes;
     }
+    state.settings.showPathOnPhoto = showPathOnPhotoInput.checked;
+    state.settings.showDateOnPhoto = showDateOnPhotoInput.checked;
     await persistSettings();
+    syncImageMaximizedState();
     syncFormFromState();
     restartForegroundNudgeTimer();
     await refreshImages();

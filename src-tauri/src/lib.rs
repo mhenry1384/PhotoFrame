@@ -1,3 +1,4 @@
+use exif;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -24,6 +25,10 @@ fn default_foreground_nudge_enabled() -> bool {
     true
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppSettings {
@@ -35,6 +40,10 @@ struct AppSettings {
     foreground_nudge_interval_minutes: u32,
     #[serde(default)]
     image_maximized: bool,
+    #[serde(default = "default_true")]
+    show_path_on_photo: bool,
+    #[serde(default = "default_true")]
+    show_date_on_photo: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +69,8 @@ impl Default for AppSettings {
             foreground_nudge_enabled: true,
             foreground_nudge_interval_minutes: DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES,
             image_maximized: false,
+            show_path_on_photo: true,
+            show_date_on_photo: true,
         }
     }
 }
@@ -129,16 +140,53 @@ fn scan_images(directory_path: String) -> Result<Vec<String>, String> {
         return Err("The configured path is not a directory.".into());
     }
 
-    let mut images = fs::read_dir(&directory)
-        .map_err(|error| format!("Failed to read directory: {error}"))?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && is_supported_image(path))
-        .map(|path| path.to_string_lossy().to_string())
-        .collect::<Vec<_>>();
+    let mut images = Vec::new();
+    let mut dirs = std::collections::VecDeque::new();
+    dirs.push_back(directory);
+
+    while let Some(dir) = dirs.pop_front() {
+        let entries = fs::read_dir(&dir)
+            .map_err(|error| format!("Failed to read directory: {error}"))?;
+
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push_back(path);
+            } else if is_supported_image(&path) {
+                images.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
 
     images.sort_unstable();
     Ok(images)
+}
+
+#[tauri::command]
+fn get_image_date(image_path: String) -> Option<String> {
+    let path = PathBuf::from(image_path.trim());
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    if ext != "jpg" && ext != "jpeg" {
+        return None;
+    }
+
+    let file = fs::File::open(&path).ok()?;
+    let mut reader = std::io::BufReader::new(file);
+    let exif = exif::Reader::new().read_from_container(&mut reader).ok()?;
+    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
+
+    let dt = if let exif::Value::Ascii(ref vec) = field.value {
+        vec.first().and_then(|bytes| exif::DateTime::from_ascii(bytes).ok())?
+    } else {
+        return None;
+    };
+
+    let months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ];
+    let month = months.get(dt.month as usize - 1)?;
+    Some(format!("{month} {}, {}", dt.day, dt.year))
 }
 
 #[tauri::command]
@@ -356,6 +404,7 @@ pub fn run() {
             raise_window_without_focus,
             debug_log,
             scan_images,
+            get_image_date,
             load_image_data_url
         ])
         .run(tauri::generate_context!())

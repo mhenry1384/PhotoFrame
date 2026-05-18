@@ -29,13 +29,61 @@
           <strong id="viewer-status">Starting up...</strong>
         </div>
         <div>
+          <span class="status-label">Date</span>
+          <strong id="image-date"></strong>
+        </div>
+        <div>
           <span class="status-label">Count</span>
           <strong id="image-counter">0 images</strong>
+        </div>
+        <div class="statusbar-path-row">
+          <span class="status-label">Path</span>
+          <strong id="image-path"></strong>
         </div>
       </section>
 
       <section class="photo-stage" id="photo-stage" data-empty="true">
+        <div class="photo-bg" id="photo-bg"></div>
         <div class="photo-controls">
+          <button
+            id="prev-image-overlay"
+            type="button"
+            class="icon-button"
+            aria-label="Show previous image"
+            title="Show previous image"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M17 6l-8 6 8 6V6zM7 6v12"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+              />
+            </svg>
+          </button>
+          <button
+            id="pause-resume-overlay"
+            type="button"
+            class="icon-button"
+            aria-label="Pause slideshow"
+            title="Pause slideshow"
+            data-paused="false"
+          >
+            <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M6 5h3v14H6zM15 5h3v14h-3z"
+                fill="currentColor"
+              />
+            </svg>
+            <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M6 5l12 7-12 7V5z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
           <button
             id="next-image-overlay"
             type="button"
@@ -94,6 +142,10 @@
           </button>
         </div>
         <img id="photo" alt="Current slideshow image" hidden />
+        <div class="photo-info-overlay" id="photo-info-overlay">
+          <span id="overlay-date"></span>
+          <span id="overlay-path"></span>
+        </div>
         <div class="empty-state">
           <p id="empty-message">Loading settings...</p>
         </div>
@@ -150,6 +202,24 @@
             min="1"
             step="1"
             inputmode="numeric"
+          />
+        </label>
+
+        <label class="field">
+          <span>Show path on photo (maximized mode)</span>
+          <input
+            id="show-path-on-photo"
+            name="showPathOnPhoto"
+            type="checkbox"
+          />
+        </label>
+
+        <label class="field">
+          <span>Show date on photo (maximized mode)</span>
+          <input
+            id="show-date-on-photo"
+            name="showDateOnPhoto"
+            type="checkbox"
           />
         </label>
 
