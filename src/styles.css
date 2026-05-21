@@ -369,7 +369,7 @@ input[type="range"] {
   bottom: 1.5rem;
   left: 1.5rem;
   z-index: 2;
-  flex-direction: column-reverse;
+  flex-direction: column;
   gap: 0.2rem;
 }
 
@@ -379,8 +379,14 @@ input[type="range"] {
 
 .photo-info-overlay span {
   font-size: 0.85rem;
-  color: rgba(255, 248, 235, 0.92);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.7);
+  color: rgba(255, 248, 235, 0.95);
+  text-shadow:
+    1px  1px 0 rgba(0, 0, 0, 0.95),
+    -1px  1px 0 rgba(0, 0, 0, 0.95),
+    1px -1px 0 rgba(0, 0, 0, 0.95),
+    -1px -1px 0 rgba(0, 0, 0, 0.95),
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 0, 0, 0.7);
   letter-spacing: 0.02em;
 }
 

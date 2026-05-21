@@ -14,7 +14,7 @@ static WINDOW_SAVE_ENABLED: AtomicBool = AtomicBool::new(false);
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const WINDOW_STATE_FILE_NAME: &str = "window-state.json";
 const WINDOW_COVERAGE_EVENT_NAME: &str = "photoframe://window-coverage";
-const DEFAULT_INTERVAL_SECONDS: u32 = 30;
+const DEFAULT_INTERVAL_SECONDS: u32 = 60;
 const DEFAULT_FOREGROUND_NUDGE_INTERVAL_MINUTES: u32 = 1;
 
 fn default_foreground_nudge_interval_minutes() -> u32 {
@@ -169,6 +169,70 @@ struct ImageExif {
     description: Option<String>,
 }
 
+fn format_exif_date(exif: &exif::Exif) -> Option<String> {
+    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
+    let dt = if let exif::Value::Ascii(ref vec) = field.value {
+        vec.first().and_then(|b| exif::DateTime::from_ascii(b).ok())?
+    } else {
+        return None;
+    };
+    let months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ];
+    let month = months.get(dt.month as usize - 1)?;
+    Some(format!("{month} {}, {}", dt.day, dt.year))
+}
+
+fn read_exif_description(exif: &exif::Exif) -> Option<String> {
+    let field = exif.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY)?;
+    if let exif::Value::Ascii(ref vec) = field.value {
+        let desc = String::from_utf8_lossy(vec.first()?).trim().to_string();
+        if !desc.is_empty() { return Some(desc); }
+    }
+    None
+}
+
+fn read_gif_comment(path: &Path) -> Option<String> {
+    let data = fs::read(path).ok()?;
+    if data.len() < 13 {
+        return None;
+    }
+    if &data[0..6] != b"GIF89a" && &data[0..6] != b"GIF87a" {
+        return None;
+    }
+    let packed = data[10];
+    let gct_size = if packed & 0x80 != 0 { 3 * (1usize << ((packed & 0x07) as usize + 1)) } else { 0 };
+    let mut pos = 13 + gct_size;
+
+    while pos + 1 < data.len() {
+        match data[pos] {
+            0x3B => break, // trailer
+            0x2C => break, // image descriptor — comments come before images; stop here
+            0x21 => {
+                let label = data[pos + 1];
+                pos += 2;
+                let is_comment = label == 0xFE;
+                let mut block_data = Vec::new();
+                while pos < data.len() {
+                    let block_len = data[pos] as usize;
+                    pos += 1;
+                    if block_len == 0 { break; }
+                    if pos + block_len > data.len() { break; }
+                    if is_comment { block_data.extend_from_slice(&data[pos..pos + block_len]); }
+                    pos += block_len;
+                }
+                if is_comment {
+                    let s = String::from_utf8_lossy(&block_data).trim().to_string();
+                    if !s.is_empty() { return Some(s); }
+                }
+            }
+            _ => break,
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn get_image_exif(image_path: String) -> ImageExif {
     let mut result = ImageExif { date: None, description: None };
@@ -178,42 +242,21 @@ fn get_image_exif(image_path: String) -> ImageExif {
         Some(e) => e.to_string_lossy().to_lowercase(),
         None => return result,
     };
-    if ext != "jpg" && ext != "jpeg" {
+
+    if ext == "gif" {
+        result.description = read_gif_comment(&path);
         return result;
     }
 
-    let file = match fs::File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return result,
-    };
-    let mut reader = std::io::BufReader::new(file);
-    let exif = match exif::Reader::new().read_from_container(&mut reader) {
-        Ok(e) => e,
-        Err(_) => return result,
-    };
-
-    if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-        if let exif::Value::Ascii(ref vec) = field.value {
-            if let Some(dt) = vec.first().and_then(|b| exif::DateTime::from_ascii(b).ok()) {
-                let months = [
-                    "January", "February", "March", "April", "May", "June",
-                    "July", "August", "September", "October", "November", "December",
-                ];
-                if let Some(month) = months.get(dt.month as usize - 1) {
-                    result.date = Some(format!("{month} {}, {}", dt.day, dt.year));
-                }
-            }
-        }
-    }
-
-    if let Some(field) = exif.get_field(exif::Tag::ImageDescription, exif::In::PRIMARY) {
-        if let exif::Value::Ascii(ref vec) = field.value {
-            if let Some(bytes) = vec.first() {
-                let desc = String::from_utf8_lossy(bytes).trim().to_string();
-                if !desc.is_empty() {
-                    result.description = Some(desc);
-                }
-            }
+    if ext == "jpg" || ext == "jpeg" || ext == "png" {
+        let file = match fs::File::open(&path) {
+            Ok(f) => f,
+            Err(_) => return result,
+        };
+        let mut reader = std::io::BufReader::new(file);
+        if let Ok(exif) = exif::Reader::new().read_from_container(&mut reader) {
+            result.date = format_exif_date(&exif);
+            result.description = read_exif_description(&exif);
         }
     }
 
@@ -343,8 +386,19 @@ fn restore_window_state(window: &Window) -> Result<(), String> {
         return Ok(());
     }
 
-    // Reject positions that are clearly off-screen (e.g. stale multi-monitor state).
-    if state.x < -state.width || state.y < -state.height || state.x > 32000.0 || state.y > 32000.0 {
+    // Reject the position if no monitor contains the window's top-left corner,
+    // which catches stale off-screen state (e.g. a disconnected monitor) without
+    // incorrectly rejecting legitimate negative X positions on left-side monitors.
+    let monitors = window.available_monitors()
+        .unwrap_or_default();
+    let on_screen = monitors.iter().any(|m| {
+        let sf = m.scale_factor();
+        let pos = m.position().to_logical::<f64>(sf);
+        let size = m.size().to_logical::<f64>(sf);
+        state.x >= pos.x && state.x < pos.x + size.width
+            && state.y >= pos.y && state.y < pos.y + size.height
+    });
+    if !on_screen {
         return Ok(());
     }
 

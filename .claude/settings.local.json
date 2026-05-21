@@ -5,7 +5,9 @@
       "PowerShell(npm run tauri dev)",
       "Bash(git config *)",
       "Bash(npm install *)",
-      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\com.matthewhenry.photoframe\" -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\com.matthewhenry.photoframe\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Name \"photoframe\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)"
     ],
     "additionalDirectories": [
       "c:\\GitHub\\PhotoFrame"

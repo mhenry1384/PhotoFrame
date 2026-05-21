@@ -15,8 +15,6 @@ type AppSettings = {
 type AppState = {
   currentImageIndex: number | null;
   imagePaths: string[];
-  imageHistory: number[];
-  historyPosition: number;
   imageRequestToken: number;
   isImageMaximized: boolean;
   isPaused: boolean;
@@ -29,14 +27,12 @@ type AppState = {
 const state: AppState = {
   currentImageIndex: null,
   imagePaths: [],
-  imageHistory: [],
-  historyPosition: -1,
   imageRequestToken: 0,
   isImageMaximized: false,
   isPaused: false,
   settings: {
     directoryPath: "",
-    intervalSeconds: 30,
+    intervalSeconds: 60,
     foregroundNudgeEnabled: true,
     foregroundNudgeIntervalMinutes: 1,
     imageMaximized: false,
@@ -44,7 +40,7 @@ const state: AppState = {
     showDateOnPhoto: true,
   },
   shuffledOrder: [],
-  shufflePosition: 0,
+  shufflePosition: -1,
   timerId: null,
 };
 
@@ -288,12 +284,15 @@ function buildShuffledOrder(length: number): number[] {
   return order;
 }
 
-function nextShuffledIndex(): number {
-  if (state.shufflePosition >= state.shuffledOrder.length) {
+function advanceShufflePosition(): number {
+  const next = state.shufflePosition + 1;
+  if (next >= state.shuffledOrder.length) {
     state.shuffledOrder = buildShuffledOrder(state.imagePaths.length);
     state.shufflePosition = 0;
+  } else {
+    state.shufflePosition = next;
   }
-  return state.shuffledOrder[state.shufflePosition++];
+  return state.shuffledOrder[state.shufflePosition];
 }
 
 async function renderCurrentImage(index: number) {
@@ -319,12 +318,13 @@ async function renderCurrentImage(index: number) {
   currentImageName.textContent = fileName;
   const dir = state.settings.directoryPath.replace(/[/\\]+$/, "");
   const rel = state.imagePaths[index].slice(dir.length).replace(/^[/\\]/, "");
-  const relDir = rel.includes("/") || rel.includes("\\") ? rel.replace(/[/\\][^/\\]+$/, "") : "";
-  const displayPath = exif.description ?? relDir;
-  imagePathEl.textContent = displayPath;
+  const rawPath = exif.description ?? rel;
+  const stripLast = (p: string) => { const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")); return i > 0 ? p.slice(0, i) : ""; };
+  const overlayDisplayPath = stripLast(stripLast(rawPath));
+  imagePathEl.textContent = exif.description ?? rel;
   imageDate.textContent = exif.date ?? "";
   overlayDate.textContent = exif.date ?? "";
-  overlayPath.textContent = displayPath;
+  overlayPath.textContent = overlayDisplayPath;
   clearViewerMessage();
   updateImageCounter();
   setViewerStatus(`Showing ${fileName}`);
@@ -340,13 +340,7 @@ async function showRandomImage() {
     return;
   }
 
-  state.imageHistory = state.imageHistory.slice(0, state.historyPosition + 1);
-  const nextIndex = nextShuffledIndex();
-  state.imageHistory.push(nextIndex);
-  if (state.imageHistory.length > 100) {
-    state.imageHistory.shift();
-  }
-  state.historyPosition = state.imageHistory.length - 1;
+  const nextIndex = advanceShufflePosition();
 
   try {
     await renderCurrentImage(nextIndex);
@@ -358,12 +352,12 @@ async function showRandomImage() {
 }
 
 async function showPreviousImage() {
-  if (state.imagePaths.length === 0 || state.historyPosition <= 0) {
+  if (state.imagePaths.length === 0 || state.shufflePosition <= 0) {
     return;
   }
 
-  state.historyPosition--;
-  const index = state.imageHistory[state.historyPosition];
+  state.shufflePosition--;
+  const index = state.shuffledOrder[state.shufflePosition];
 
   try {
     await renderCurrentImage(index);
@@ -428,10 +422,8 @@ async function refreshImages() {
   const imagePaths = await invoke<string[]>("scan_images", { directoryPath });
   state.imagePaths = imagePaths;
   state.currentImageIndex = null;
-  state.imageHistory = [];
-  state.historyPosition = -1;
   state.shuffledOrder = buildShuffledOrder(imagePaths.length);
-  state.shufflePosition = 0;
+  state.shufflePosition = -1;
 
   if (imagePaths.length === 0) {
     currentImageName.textContent = "No supported images found";
